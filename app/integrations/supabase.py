@@ -7,8 +7,12 @@ import httpx
 from fastapi import Depends, HTTPException
 from pydantic import SecretStr
 
+import logging
+
 from app.core.config import settings
 from app.core.errors import ProviderUnavailableError
+
+logger = logging.getLogger(__name__)
 
 
 def unauthorized() -> HTTPException:
@@ -62,8 +66,21 @@ class SupabaseGateway:
             raise unauthorized()
         if not response.is_success:
             # Raw provider bodies may include SQL, identities or credentials.
-            # Do not forward or log them. Permission changes fail closed as well.
-            raise ProviderUnavailableError()
+            # Do not forward or log them. Only the status and error-code
+            # identifier (e.g. "PGRST202", "42501") are safe to log.
+            provider_code: object = None
+            try:
+                provider_code = response.json().get("code")
+            except ValueError:
+                pass
+            logger.error(
+                "Supabase request failed: %s %s -> %s (provider code: %s)",
+                method,
+                path,
+                response.status_code,
+                provider_code,
+            )
+            raise ProviderUnavailableError() from None
         try:
             return response.json()
         except ValueError:

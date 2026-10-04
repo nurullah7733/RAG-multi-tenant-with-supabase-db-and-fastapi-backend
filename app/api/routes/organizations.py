@@ -35,7 +35,7 @@ PageOffset = Annotated[int, Query(ge=0)]
 async def create_organization(
     payload: OrganizationCreate, repository: Repository
 ) -> Organization:
-    organization = await repository.create(payload.name)
+    organization = await repository.create(payload)
     logger.info("organization_created organization_id=%s", organization.id)
     return organization
 

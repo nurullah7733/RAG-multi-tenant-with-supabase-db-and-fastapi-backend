@@ -210,3 +210,11 @@ Next: Phase 1.4 organization onboarding. It has not been implemented.
 References: [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security),
 [database functions](https://supabase.com/docs/guides/database/functions),
 [CLI configuration](https://supabase.com/docs/guides/local-development/cli/config).
+
+## Phase 1.4 update
+
+Organization creation now supports onboarding metadata and the new migration
+`20261004000000_organization_onboarding.sql`. Name-only callers remain supported.
+See [Phase 1.4 setup, scope and verification](../docs/phase-1.4-onboarding.md).
+The Phase 1.3 verification notes above describe that earlier snapshot; use the
+Phase 1.4 report and current tests for the current implementation.

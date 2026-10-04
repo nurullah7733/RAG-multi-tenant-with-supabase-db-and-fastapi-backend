@@ -7,7 +7,12 @@ from pydantic import TypeAdapter, ValidationError
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.errors import ProviderUnavailableError, ResourceNotFoundError
 from app.integrations.supabase import SupabaseGateway, get_gateway
-from app.schemas.organizations import Membership, Organization, OrganizationAccess
+from app.schemas.organizations import (
+    Membership,
+    Organization,
+    OrganizationAccess,
+    OrganizationCreate,
+)
 
 T = TypeVar("T")
 
@@ -24,13 +29,20 @@ class OrganizationRepository:
         self.gateway = gateway
         self.user = user
 
-    async def create(self, name: str) -> Organization:
+    async def create(self, payload: OrganizationCreate) -> Organization:
         # The RPC derives owner from auth.uid(), never from the request body.
         result = await self.gateway.request(
             "POST",
             "/rest/v1/rpc/create_organization",
             self.user.token,
-            body={"organization_name": name},
+            body={
+                "organization_name": payload.name,
+                **{
+                    key: value
+                    for key, value in payload.model_dump(exclude_unset=True).items()
+                    if key != "name" and value is not None
+                },
+            },
         )
         return parse_response(TypeAdapter(Organization), result)
 
@@ -40,7 +52,7 @@ class OrganizationRepository:
             "/rest/v1/organization_members",
             self.user.token,
             params={
-                "select": "role,organization:organizations(id,name,created_at)",
+                "select": "role,organization:organizations(id,name,created_at,organization_type,country_code,timezone,default_language,currency_code)",
                 "user_id": f"eq.{self.user.user_id}",
                 "order": "created_at.asc,organization_id.asc",
                 "limit": limit,
@@ -79,7 +91,7 @@ class OrganizationRepository:
             "/rest/v1/organizations",
             self.user.token,
             params={
-                "select": "id,name,created_at",
+                "select": "id,name,created_at,organization_type,country_code,timezone,default_language,currency_code",
                 "id": f"eq.{organization_id}",
                 "limit": 1,
             },

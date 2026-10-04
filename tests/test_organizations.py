@@ -261,3 +261,73 @@ def test_no_team_mutation_or_platform_admin_routes(api):
         == 405
     )
     assert client.get("/api/v1/admin").status_code == 404
+
+
+def test_onboarding_metadata_is_normalized_and_forwarded_atomically(api):
+    client, _, configure = api
+    payload = {
+        "name": " Example ",
+        "organization_type": " Custom industry ",
+        "country_code": " bd ",
+        "timezone": "Asia/Dhaka",
+        "default_language": "bn-BD",
+        "currency_code": " bdt ",
+    }
+
+    def create(request):
+        body = json.loads(request.content)
+        assert body == {
+            "organization_name": "Example",
+            "organization_type": "Custom industry",
+            "country_code": "BD",
+            "timezone": "Asia/Dhaka",
+            "default_language": "bn-BD",
+            "currency_code": "BDT",
+        }
+        return httpx.Response(
+            200,
+            json={
+                **organization(),
+                **{
+                    key: value
+                    for key, value in body.items()
+                    if key != "organization_name"
+                },
+            },
+        )
+
+    configure(create)
+    result = client.post(BASE, json=payload)
+    assert result.status_code == 201
+    assert result.json()["country_code"] == "BD"
+    assert result.json()["organization_type"] == "Custom industry"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("organization_type", " "),
+        ("organization_type", "x" * 101),
+        ("country_code", "USA"),
+        ("country_code", "12"),
+        ("currency_code", "US"),
+        ("currency_code", "123"),
+        ("timezone", "Mars/Olympus"),
+        ("timezone", "../UTC"),
+        ("default_language", "English"),
+        ("default_language", "en_US"),
+    ],
+)
+def test_invalid_onboarding_metadata_never_reaches_database(api, field, value):
+    client, requests, _ = api
+    assert client.post(BASE, json={"name": "Example", field: value}).status_code == 422
+    assert all(request.url.path == "/auth/v1/user" for request in requests)
+
+
+def test_legacy_creation_defaults_language_to_english(api):
+    client, _, configure = api
+    configure(lambda _: httpx.Response(200, json=organization()))
+    result = client.post(BASE, json={"name": "Example"})
+    assert result.status_code == 201
+    assert result.json()["default_language"] == "en"
+    assert result.json()["country_code"] is None
