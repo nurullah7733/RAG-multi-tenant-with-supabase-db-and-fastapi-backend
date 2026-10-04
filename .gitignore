@@ -1,6 +1,9 @@
 # Python
 .venv/
+.temp/
+.branches/
 __pycache__/
+*.pyc
 *.py[cod]
 
 # Environment variables

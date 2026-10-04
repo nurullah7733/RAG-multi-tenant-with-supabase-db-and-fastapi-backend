@@ -40,6 +40,12 @@ class ResourceNotFoundError(AppError):
     message = "The requested resource was not found."
 
 
+class ProviderUnavailableError(AppError):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "provider_unavailable"
+    message = "Authentication or database service is temporarily unavailable."
+
+
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
     code = "permission_denied"
