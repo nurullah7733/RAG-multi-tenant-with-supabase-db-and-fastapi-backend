@@ -15,7 +15,10 @@ pydantic_settings==2.15.0
 python-dotenv==1.2.4
 uvicorn==0.54.0
 httpx==0.28.1
+python-multipart==0.0.32
+pypdf==6.19.0
 tzdata==2026.5
 
 # Development / testing
 pytest==9.1.1
+ruff==0.16.10

@@ -46,6 +46,18 @@ class ProviderUnavailableError(AppError):
     message = "Authentication or database service is temporarily unavailable."
 
 
+class UploadValidationError(AppError):
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    code = "invalid_document"
+    message = "The uploaded file is not supported."
+
+
+class UploadTooLargeError(AppError):
+    status_code = 413
+    code = "document_too_large"
+    message = "The upload exceeds the allowed size."
+
+
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
     code = "permission_denied"
@@ -79,7 +91,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(
         _: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
-        
+
         error: dict[str, object] = {"code": _http_error_code(exc.status_code)}
 
         if isinstance(exc.detail, str):

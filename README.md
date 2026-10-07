@@ -218,3 +218,104 @@ Organization creation now supports onboarding metadata and the new migration
 See [Phase 1.4 setup, scope and verification](../docs/phase-1.4-onboarding.md).
 The Phase 1.3 verification notes above describe that earlier snapshot; use the
 Phase 1.4 report and current tests for the current implementation.
+
+## Phase 2.1–2.2 update
+
+Document upload with upload-time security is implemented. See
+[Phase 2 setup, scope and verification](../docs/phase-2.1-2.2-documents-upload.md).
+Endpoints: `POST /api/v1/organizations/{id}/documents` (multipart `file` field,
+exactly one file), `GET .../documents?limit=&offset=` and
+`DELETE .../documents/{document_id}`. Every request authorizes the caller's
+membership server-side; storage paths are derived from authorized context and a
+server-generated document ID, never from input. Validation covers filename,
+extension, declared MIME type, real parsed file content (PDF structure, DOCX
+package/XML, UTF text), size ceiling, and malformed/multipart body limits.
+Text extraction, chunking, embeddings and pgvector storage are intentionally
+absent; documents stay in the `uploaded` state.
+
+## Phase 2.3 update
+
+The upload request now runs the document processing pipeline's extraction
+stage. See
+[Phase 2.3 setup, scope and verification](../docs/phase-2.3-text-extraction.md).
+After the document row and storage object are created, the backend runs
+`extract_text` on the stored bytes: PDF pages via pypdf (1-based page numbers),
+DOCX `w:t` text with paragraph/break separators, and TXT through the shared
+UTF decoder. Extraction is Unicode-preserving and binary-safe. Empty,
+whitespace-only, encrypted, damaged and scanned/image-only PDFs fail safely and
+permanently: the row records `status = "failed"` with a safe
+`processing_error` message (no parser output), and the stored file is kept for
+future manual reprocessing. A successful extraction records the in-progress
+`status = "processing"`; the fully-indexed `ready` state belongs to the later
+vector-indexing step. Status/error writes go through a scoped `PATCH` under
+membership RLS with column-level grants limited to
+`status, processing_error, updated_at`; a database trigger keeps
+`updated_at` current. Chunking, embeddings, chunk storage, reprocessing and
+background execution remain out of scope for this step.
+
+## Phase 2.4 update
+
+Unicode/multilingual correctness of every layer implemented so far is now
+locked in with end-to-end tests and a disposable-database SQL suite. See
+[Phase 2.4 setup, scope and verification](../docs/phase-2.4-unicode-support.md).
+Covered layers: filename validation and metadata round-trips (Bengali,
+Arabic, Spanish, emoji filenames through upload JSON, the PostgREST insert
+body and the list response), Unicode TXT content through the storage PUT and
+extraction, DOCX paragraph text, the metadata table's Unicode-aware
+`char_length` check, and Unicode `processing_error` responses. Layers that do
+not exist yet (cleaning, chunking, JSON vector payloads, pgvector retrieval)
+remain out of scope and their Unicode obligations are documented for the
+steps that add them; no product code required changes in this step.
+
+## Phase 2.5 update
+
+The extraction stage is followed by conservative cleaning and chunking. See
+[Phase 2.5 setup, scope and verification](../docs/phase-2.5-chunking.md).
+Cleaning removes invisible formatting characters, collapses whitespace and
+blank-line runs, and keeps all meaningful Unicode unchanged. Chunking splits
+each page independently at paragraph, sentence or word boundaries (never
+mid-way through a Unicode grapheme cluster; unspaced CJK text falls back to
+hard splits that always progress), overlaps chunks by a configurable window,
+and absorbs tiny meaningless tails. Chunk sizes/overlap/minimum are
+environment-configurable with relationship validation
+(`DOCUMENT_CHUNK_SIZE`, `DOCUMENT_CHUNK_OVERLAP`,
+`DOCUMENT_MIN_CHUNK_CHARS`). Chunks are computed and logged (counts only)
+but not yet persisted anywhere; pgvector storage, embeddings and the
+`ready` state remain the later vector steps.
+
+## Phase 2.6 update
+
+Vector infrastructure is in place. See
+[Phase 2.6 setup, scope and verification](../docs/phase-2.6-pgvector.md).
+Migration `20261008000000_pgvector_knowledge_chunks.sql` enables pgvector,
+creates `knowledge_chunks` (organization/document cascade FKs, chunk_index,
+content, page_number, section_title, `vector(1536)` embedding, provider and
+model columns) with a unique `(document_id, chunk_index)` index, an HNSW
+cosine index and member-scoped RLS plus restrictive tenant-boundary
+policies. Insert-time policy additionally binds `document_id` and
+`organization_id` together, so a chunk can never cross documents. The
+tenant-scoped search function `private.match_knowledge_chunks(org, query,
+match_count, minimum_similarity)` is security-invoker (the caller's RLS also
+applies), requires a non-null organization, and only ever returns that
+organization's embedded chunks. Embedding generation, pipeline persistence
+and `ready` states are the next steps; embeddings are therefore nullable
+until then.
+
+## Phase 2.7–2.8 update
+
+The document pipeline is now end-to-end. See
+[Phase 2.7–2.8 setup, scope and verification](../docs/phase-2.7-2.8-indexing.md).
+An isolated OpenAI embedding provider (`app/services/embeddings.py`) generates
+chunk and query embeddings with batching (32 inputs per request), dimension
+validation against the configured `EMBEDDING_DIMENSIONS` (1536, matching the
+pgvector column), and safe errors that never leak keys or provider payloads.
+After upload, the pipeline runs extract → clean → chunk → embed → idempotent
+chunk replacement (`DELETE` then batched `INSERT` on `knowledge_chunks`) →
+`ready`; any stage failure records `failed` plus a safe `processing_error`.
+The document list API now embeds `knowledge_chunks(count)` as `chunk_count`,
+and `POST /organizations/{id}/documents/{doc_id}/reprocess` re-runs the whole
+pipeline from the stored file (validated again, forged storage paths refused).
+The dashboard shows chunk counts and a Reprocess action. `OPENAI_API_KEY` is
+required at boot; embeddings run inline in the request path (background
+execution remains Phase 14), and the similarity-search function still awaits
+its Phase 3 caller.

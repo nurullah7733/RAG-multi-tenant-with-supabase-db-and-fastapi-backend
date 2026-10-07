@@ -1,9 +1,10 @@
 import base64
 import json
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,6 +67,46 @@ class Settings(BaseSettings):
 
     # Comma-separated list of allowed CORS origins (no trailing slash).
     cors_origins: str = "http://localhost:3000"
+
+    knowledge_bucket_name: Literal["knowledge-documents"] = "knowledge-documents"
+    max_document_size_mb: int = Field(default=20, ge=1, le=20)
+
+    # Chunking strategy (Phase 2.5). Overlap at most half the size; minimum
+    # chunk threshold strictly below the target size.
+    document_chunk_size: int = Field(default=1000, ge=200, le=4000)
+    document_chunk_overlap: int = Field(default=150, ge=0, le=2000)
+    document_min_chunk_chars: int = Field(default=200, ge=50, le=1000)
+
+    @model_validator(mode="after")
+    def validate_chunking(self) -> "Settings":
+        if 2 * self.document_chunk_overlap > self.document_chunk_size:
+            raise ValueError(
+                "DOCUMENT_CHUNK_OVERLAP must be at most half of DOCUMENT_CHUNK_SIZE"
+            )
+        if self.document_min_chunk_chars >= self.document_chunk_size:
+            raise ValueError(
+                "DOCUMENT_MIN_CHUNK_CHARS must be smaller than DOCUMENT_CHUNK_SIZE"
+            )
+        return self
+
+    # Embedding configuration (Phase 2.7). The dimension must match the
+    # pgvector column created by the knowledge_chunks migration.
+    embedding_provider: Literal["openai"] = "openai"
+    embedding_model: str = Field(
+        default="text-embedding-3-small", min_length=1, max_length=100
+    )
+    embedding_dimensions: int = Field(default=1536, ge=64, le=3072)
+    openai_api_key: SecretStr = SecretStr("")
+
+    @model_validator(mode="after")
+    def validate_embeddings(self) -> "Settings":
+        if not self.openai_api_key.get_secret_value().strip():
+            raise ValueError("OPENAI_API_KEY is required for document indexing")
+        if self.embedding_dimensions != 1536:
+            raise ValueError(
+                "EMBEDDING_DIMENSIONS must match the knowledge_chunks vector column (1536)"
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

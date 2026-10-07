@@ -2,8 +2,6 @@ import logging
 
 from fastapi import APIRouter
 
-from app.core.config import settings
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["system"])
