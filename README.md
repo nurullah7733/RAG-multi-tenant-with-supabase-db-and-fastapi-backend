@@ -319,3 +319,9 @@ The dashboard shows chunk counts and a Reprocess action. `OPENAI_API_KEY` is
 required at boot; embeddings run inline in the request path (background
 execution remains Phase 14), and the similarity-search function still awaits
 its Phase 3 caller.
+
+## Phase 3.1 update
+
+Internal text generation now supports OpenAI, Mistral and DeepSeek through
+`app/services/generation.py`. See [configuration and verification](../docs/phase-3.1-generation.md).
+Generation is separate from document embeddings; no chat endpoint or UI is added.

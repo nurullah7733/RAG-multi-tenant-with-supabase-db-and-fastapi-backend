@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     embedding_dimensions: int = Field(default=1536, ge=64, le=3072)
     openai_api_key: SecretStr = SecretStr("")
 
+    # Generation only; independent of the persisted embedding model.
+    ai_provider: Literal["openai", "mistral", "deepseek"] = "openai"
+    ai_model: str = Field(default="", max_length=100, pattern=r"^[A-Za-z0-9._:/-]*$")
+    ai_max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+    ai_timeout_seconds: float = Field(default=60, ge=1, le=300)
+    mistral_api_key: SecretStr = SecretStr("")
+    deepseek_api_key: SecretStr = SecretStr("")
+
     @model_validator(mode="after")
     def validate_embeddings(self) -> "Settings":
         if not self.openai_api_key.get_secret_value().strip():
